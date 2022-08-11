@@ -55,21 +55,20 @@
 				vm.age = 18;
 			}, 1500) */
 			
-			vm.name = '李白';
-			// console.log(app.innerHTML);
-			
-			setTimeout(()=>{
-				console.log(app.innerHTML); // 宏任务
-			})
+		
+			// setTimeout(()=>{
+			// 	console.log(app.innerHTML); // 宏任务
+			// })
 			
 			// Promise.resolve().then(()=>{
 			// 	console.log(app.innerHTML); // 微任务优先
 			// })
 			
-			
-			// vm.$nextTick(()=>{
-			// 	console.log(app.innerHTML); // 微任务优先
-			// })
+			vm.name = '李白';
+			vm.$nextTick(()=>{
+				console.log(app.innerHTML); // 微任务优先
+			})
+				
 		</script>
 
 		

@@ -75,7 +75,7 @@ class Watcher {
 	 * 这里设计一个队列将watcher都缓存起来 只更新一次 避免性能浪费
 	 */
 	update(){
-		// watcher去重并将其放入队列
+		// 先不直接更新watcher的视图 而是将要更新视图的watcher暂存到队列中
 		queneWatcher(this);
 	}
 	
@@ -87,14 +87,21 @@ class Watcher {
 
 
 
-let quene = [];
-let memo = {};
-let pending = false;
 
 /**
- * 1. 同一组件watcher多个属性set引起的watcher去重
- * 2. 多个组件的属性同时发生变化 保证只更新一次视图
+ * 
+ * 1. 同一组件
+ * 假设A组件绑定了name和age，此时给name和age赋值触发两次setter，原本要更新A组件两次，现在我们要让它只更新一次视图
+ * 
+ * 2. 多个组件
+ * age属性不只依赖A组件，还依赖于B组件，当age连着两次赋值之后，此时原本A组件和B组件都要更新2次，现在我们要让A和B组件都各更新一次即可
+ * 
+ * 3.queneWatcher的作用
+ * 不管watcher的update方法走了多少次，最后的更新操作只进行一次，那么就要设置一个锁，在第一次代码执行的时候关锁，不让后续的代码触发这个更新操作
  */
+let quene = []; // 缓存数组 存放的watcher在后续都会执行一次刷新操作
+let memo = {}; // 去重
+let pending = false; // 防抖
 function queneWatcher(watcher){
 	const watcherId = watcher.id;
 	
@@ -104,17 +111,24 @@ function queneWatcher(watcher){
 		memo[watcherId] = true;
 		console.log(quene);
 		
-		// 不管此方法执行多少次 最终的视图刷新操作只执行一次
+		/**
+		 * 不管此方法执行多少次 最终的视图刷新操作只执行一次 
+		 * 为什么要将刷新的操作写在异步代码中呢 
+		 * 就是为了利用事件环的机制 
+		 * 让此异步代码等到前面的所有同步代码执行完成之后再执行 
+		 * 也就实现了多次属性值修改只执行一次更新的操作
+		 */
 		if(!pending){
 			// setTimeout(flushSchedulerQuene,0)
-			nextTick(flushSchedulerQuene,0);
+			nextTick(flushSchedulerQuene);
 			pending = true;
 		}
 	}
 }
 
 /**
- * 更新视图操作
+ * 把缓存在队列中的watcher拿出来 
+ * 依次执行其更新视图操作
  */
 function flushSchedulerQuene(){
 	console.log('执行异步批量渲染');
@@ -122,7 +136,7 @@ function flushSchedulerQuene(){
 	let flushWatcherQuene = quene.slice(0);
 	
 	// 清空队列和memo对象以及pending默认值
-	quene = [];
+	quene = []; // 保证在刷新的过程中有新的watcher重新放入队列中
 	memo = {};
 	pending = false
 	
