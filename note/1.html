@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title></title>
+	</head>
+	<body>
+		<script type="text/javascript">
+			let nameSubs = ['A', 'B', 'C'];
+			let ageSubs = ['A', 'B', 'D'];
+			
+			let quene = [];
+			let memo = {};
+			let pending = false;
+			let watcher = {};
+		
+			//  每次nameNotify都等于触发了一次name的set 要通知观察者组件更新视图
+			nameNotify();
+			nameNotify();
+			nameNotify();
+			
+			//  每次ageNotify都等于触发了一次age的set 要通知观察者组件更新视图
+			ageNotify();
+			ageNotify();
+			
+			function nameNotify(){
+				nameSubs.forEach(watcher => {
+					update(watcher);
+				})
+			}
+		
+			function ageNotify(){
+				ageSubs.forEach(watcher => {
+					update(watcher);
+				})
+			}
+			
+			function update(watcher) {
+				if (!memo[watcher]) {
+					quene.push(watcher);
+					memo[watcher] = true;
+					console.log('quene', quene);
+		
+					// 不管此方法执行多少次 最终的视图刷新操作只执行一次
+					if (!pending) {
+						console.log('开启定时器');
+						setTimeout(() => {
+							console.log('定时器开始执行');
+							flushSchedulerQuene();
+							console.log('执行视图更新操作');
+						}, 0)
+						pending = true;
+					}
+				}
+			}
+		
+			function flushSchedulerQuene() {
+				// 浅克隆一份
+				let flushWatcherQuene = quene.slice(0);
+		
+				// 清空队列和memo对象以及pending默认值
+				quene = [];
+				memo = {};
+				pending = false
+		
+				// 从保存watcher的队列中依次取出更新视图
+				flushWatcherQuene.forEach(watcher => {
+					console.log('执行了1次更新操作run', watcher);
+				});
+			}
+		</script>
+	</body>
+</html>
