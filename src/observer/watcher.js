@@ -1,18 +1,21 @@
 import Dep from './dep.js'
 import { nextTick } from './nextTick.js';
+import { pushTarget,popTarget } from './dep.js';
 
 let id = 0;
 class Watcher {
 	/**
 	 * @param {Object} vm 实例
-	 * @param {Object} fn 实例对应的渲染逻辑
-	 * @param {Object} flag 标识是否为渲染watcher
+	 * @param {Object} fn 当实例上属性的getter触发的时候要执行的逻辑 
+	 * @param {Object} options 标识是否为渲染watcher或者lazy执行fn的watcher
+	 * 当watcher实例是一个渲染watcher的时候，fn就是_render和_update意味着要更新视图
+	 * 当watcher实例是一个计算watcher的时候，fn就是计算属性自身的getter，要设置缓存memorize
 	 */
-	constructor(vm, fn, flag) {
+	constructor(vm, fn, options) {
 		this.id = id++; // 创建组件唯一的watcher
 		this.getter = fn; // getter意味着调用函数可以发生取值操作
-		this.renderWatcher = flag; // 标识是否为渲染watcher
-		
+		this.renderWatcher = options.renderWatcher; // 标识是否为渲染watcher
+		this.vm = vm;
 		/**
 		 * 记录当前这个组件watcher实例上观察了多少个属性，目的：
 		 * 1.实现computed计算属性
@@ -24,9 +27,34 @@ class Watcher {
 		// 记录当前watcher绑定的dep的id数组 实现去重操作
 		this.depsId = new Set();
 		
-		// 每次new Watcher 会执行并渲染视图
-		this.get();
+		// 计算属性的getter被触发后先不执行 先看下值是否被修改(变脏)
+		// 如果已经被修改，那么执行getter;否则返回上一次缓存的结果
+		/**
+		 * 1. 如果options.lazy为true 代表传入的fn不立即执行，否则才需要执行fn也就是get
+		 * 2. 多次取值用dirty进行控制
+		 */
+		this.lazy = options.lazy;
+		this.lazy ? null : this.get();
+		this.dirty = options.lazy;
 	}
+	
+	
+	evaluate(){
+		// 执行watcher的get就等于执行getter方法也就是用户传入的fn，对于计算属性来说fn就是用户定义的userDefine，在这里拿到用户传入的计算属性的get函数的返回值，并且需要标识为脏
+		this.value = this.get();
+		this.dirty = false;
+	}
+	
+	/**
+	 * 让计算属性watcher也收集渲染watcher
+	 */
+	depend(){
+		let depLen = this.deps.length;
+		while(depLen--){
+			this.deps[depLen].depend();
+		}
+	}
+	
 	
 	/**
 	 * @param {Object} dep 属性的收集器
@@ -54,7 +82,8 @@ class Watcher {
 
 	get() {
 		// 给Dep类的静态属性target赋值
-		Dep.target = this;
+		// Dep.target = this;
+		pushTarget(this);
 
 		/**
 		 * 1.执行getter就等于执行组件new Watcher的时候传递进来的渲染逻辑函数中的_render
@@ -62,10 +91,14 @@ class Watcher {
 		 * 3.就等于去vm上获取模板中变量vm.name和vm.age的值
 		 * 4.就会触发绑定在模板上属性defineProperty的get方法
 		 */
-		this.getter();
+		let value = this.getter.call(this.vm);
 		
 		// 渲染完成之后将Dep.target设置为null
-		Dep.target = null;
+		popTarget();
+		// Dep.target = null;
+		
+		return value;
+		
 	}
 	
 	/**
@@ -75,8 +108,15 @@ class Watcher {
 	 * 这里设计一个队列将watcher都缓存起来 只更新一次 避免性能浪费
 	 */
 	update(){
-		// 先不直接更新watcher的视图 而是将要更新视图的watcher暂存到队列中
-		queneWatcher(this);
+		// 如果是计算属性有lazy标识 计算属性依赖的值变化就标识dirty属性为脏
+		if(this.lazy){
+			this.dirty = true;
+		}else{
+			// 先不直接更新watcher的视图 而是将要更新视图的watcher暂存到队列中
+			queneWatcher(this);
+		}
+		
+	
 	}
 	
 	run(){

@@ -6,24 +6,46 @@
 		<meta http-equiv="X-UA-Compatible" content="IE=edge">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>手写实现Mini-Vue</title>
-		<script src="/dist/mini-vue/vue.js" type="text/javascript"></script>
+		<!-- <script src="/dist/mini-vue/vue.js" type="text/javascript"></script> -->
+		<script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script>
 	</head>
 
 	<body>
-		<div id="app" style="font-size: 14px;color: black;" key="456">
+		<!-- <div id="app1" style="font-size: 14px;color: black;" key="456">
 			<div style="color: red;" key="123">
 				姓名：{{name}} - {{name}}
 			</div>
 			<span>年龄：{{age}} haha</span>
+			<h2>{{fullName1}} {{fullName1}} {{fullName1}}</h2>
+		</div> -->
+		
+		<div id="app">
+			<h2>{{fullName1}} {{fullName1}} {{fullName1}}</h2>
 		</div>
+		
 
 
 		<script type="text/javascript">
+			Vue.mixin({
+				created(){
+					console.log('mixin1-created')
+				}
+			})
+			
+			Vue.mixin({
+				created(){
+					console.log('mixin2-created')
+				}
+			})
+			// console.log(Vue.options)
+			
 			let vm = new Vue({
 				el: "#app",
 				data() {
 					return {
-						name: 'tom',
+						name:'Tom',
+						firstName: 'Li',
+						lastName:'Lei',
 						age: 24,
 						info: {
 							grade: '3年级一班',
@@ -42,18 +64,41 @@
 							},
 						]
 					}
+				},
+				created(){
+					console.log('vm-created')
+				},
+				computed:{
+					fullName1(){
+						console.log('读取一次computed-fullName1的值');
+						return this.firstName + this.lastName;
+					},
+					/* fullName2:{
+						get(){
+							return this.firstName + this.lastName;
+						},
+						set(newValue){
+							console.log('newValue',newValue);
+						}
+					} */
 				}
 			})
 			console.log('vm', vm)
+			
+			setTimeout(()=>{
+				// debugger;
+				vm.firstName = 'Wang';
+			},1000)
+
 
 			// 多次属性变化的异步更新
-			/* setTimeout(() => {
-				vm.name = 'gim';
-				vm.name = 'tim';
-				vm.name = 'dim';
-				vm.age = 15;
-				vm.age = 18;
-			}, 1500) */
+			// setTimeout(() => {
+			// 	vm.name = 'gim';
+			// 	vm.name = 'tim';
+			// 	vm.name = 'dim';
+			// 	vm.age = 15;
+			// 	vm.age = 18;
+			// }, 1500)
 			
 		
 			// setTimeout(()=>{
@@ -64,10 +109,10 @@
 			// 	console.log(app.innerHTML); // 微任务优先
 			// })
 			
-			vm.name = '李白';
-			vm.$nextTick(()=>{
-				console.log(app.innerHTML); // 微任务优先
-			})
+			// vm.name = '李白';
+			// vm.$nextTick(()=>{
+			// 	console.log(app.innerHTML); // 微任务优先
+			// })
 				
 		</script>
 

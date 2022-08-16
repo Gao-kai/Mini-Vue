@@ -175,9 +175,9 @@
 
     _createClass(Dep, [{
       key: "depend",
-      value: function depend(watcher) {
-        // 让watcher先记住dep 比直接push实现去重 这个this是dep
-        watcher.addDep(this); // 直接在这里无脑push 不会去重
+      value: function depend() {
+        // 让watcher先记住dep 比直接push实现去重 Dep.target永远指向当前dep要收集的watcher this就是dep
+        Dep.target.addDep(this); // 直接在这里无脑push 不会去重
         // this.subs.push(watcher);
       }
       /**
@@ -205,10 +205,22 @@
     }]);
 
     return Dep;
-  }(); // 给Dep挂载一个全局属性 暴露出去 初始值为null 就是一个全局变量
+  }(); // 给Dep挂载一个全局属性 暴露出去 初始值为null 就是一个全局变量 代指当前正在
 
 
-  Dep.target = null;
+  Dep.target = null; // 存放渲染watcher和计算watcher的栈
+
+  var stack = []; // 入栈
+
+  function pushTarget(watcher) {
+    stack.push(watcher);
+    Dep.target = watcher;
+  } // 出栈
+
+  function popTarget() {
+    stack.pop();
+    Dep.target = stack[stack.length - 1];
+  }
 
   function observe(data) {
     if (_typeof(data) !== 'object' || data === null) return; // 如果一个对象的__ob__属性存在并且是Observer的实例 那么说明这个对象已经被观测过了
@@ -375,6 +387,333 @@
     }
   }
 
+  var timerFunction; // nextTick处理异步刷新的优雅降级
+
+  function getTimerFn(fn) {
+    if (Promise) {
+      timerFunction = function timerFunction() {
+        Promise.resolve().then(flashCallBacks);
+      };
+    } else if (MutationObserver) {
+      // 这里传入的回调是异步回调 当DOM元素属性变化的时候触发flashCallBacks
+      var mutationOb = new MutationObserver(flashCallBacks);
+      var textNode = document.createTextNode(1);
+      mutationOb.observe(textNode, {
+        characterData: true
+      });
+
+      timerFunction = function timerFunction() {
+        textNode.textContent = 2;
+      };
+    } else if (setImmediate) {
+      timerFunction = function timerFunction() {
+        setImmediate(flashCallBacks);
+      };
+    } else {
+      timerFunction = function timerFunction() {
+        setTimeout(flashCallBacks, 0);
+      };
+    }
+  }
+
+  getTimerFn();
+  /**
+   * @param {Object} callback 回调函数
+   * 异步批处理:多次操作执行一次
+   */
+
+  function flashCallBacks() {
+    var flushCallBacks = callBacks.slice(0); // 清空队列和memo对象以及pending默认值
+
+    callBacks = [];
+    waiting = false; // 从保存watcher的队列中依次取出更新视图
+
+    flushCallBacks.forEach(function (cb) {
+      cb();
+    });
+  }
+
+  var callBacks = [];
+  var waiting = false;
+  function nextTick(callback) {
+    // 维护所有来自内部和外部的callback 这是同步操作
+    callBacks.push(callback);
+
+    if (!waiting) {
+      // 这是异步操作 最后将所有任务一起刷新
+      // setTimeout(()=>{
+      // 	flashCallBacks();
+      // },0)
+      timerFunction(flashCallBacks);
+      waiting = true;
+    }
+  }
+
+  var id = 0;
+
+  var Watcher = /*#__PURE__*/function () {
+    /**
+     * @param {Object} vm 实例
+     * @param {Object} fn 当实例上属性的getter触发的时候要执行的逻辑 
+     * @param {Object} options 标识是否为渲染watcher或者lazy执行fn的watcher
+     * 当watcher实例是一个渲染watcher的时候，fn就是_render和_update意味着要更新视图
+     * 当watcher实例是一个计算watcher的时候，fn就是计算属性自身的getter，要设置缓存memorize
+     */
+    function Watcher(vm, fn, options) {
+      _classCallCheck(this, Watcher);
+
+      this.id = id++; // 创建组件唯一的watcher
+
+      this.getter = fn; // getter意味着调用函数可以发生取值操作
+
+      this.renderWatcher = options.renderWatcher; // 标识是否为渲染watcher
+
+      this.vm = vm;
+      /**
+       * 记录当前这个组件watcher实例上观察了多少个属性，目的：
+       * 1.实现computed计算属性
+       * 2.组件卸载之后需要将当前组件watcher绑定的所有dep释放
+       * 3.watcher和dep是多对多的关系
+       */
+
+      this.deps = []; // 记录当前watcher绑定的dep的id数组 实现去重操作
+
+      this.depsId = new Set(); // 计算属性的getter被触发后先不执行 先看下值是否被修改(变脏)
+      // 如果已经被修改，那么执行getter;否则返回上一次缓存的结果
+
+      /**
+       * 1. 如果options.lazy为true 代表传入的fn不立即执行，否则才需要执行fn也就是get
+       * 2. 多次取值用dirty进行控制
+       */
+
+      this.lazy = options.lazy;
+      this.lazy ? null : this.get();
+      this.dirty = options.lazy;
+    }
+
+    _createClass(Watcher, [{
+      key: "evaluate",
+      value: function evaluate() {
+        // 执行watcher的get就等于执行getter方法也就是用户传入的fn，对于计算属性来说fn就是用户定义的userDefine，在这里拿到用户传入的计算属性的get函数的返回值，并且需要标识为脏
+        this.value = this.get();
+        this.dirty = false;
+      }
+      /**
+       * 让计算属性watcher也收集渲染watcher
+       */
+
+    }, {
+      key: "depend",
+      value: function depend() {
+        var depLen = this.deps.length;
+
+        while (depLen--) {
+          this.deps[depLen].depend();
+        }
+      }
+      /**
+       * @param {Object} dep 属性的收集器
+       * 给watcher记录关联了多少个属性dep
+       * 
+       * 注意：重复的属性也不用重复push记录，因为一个watcher组件模板中可能绑定了多个重复的属性，比如一个组件模板多个地方用到属性name这是很常见的
+       */
+
+    }, {
+      key: "addDep",
+      value: function addDep(dep) {
+        var depId = dep.id; // 使用set实现watcher关联的属性dep 去重 避免同一属性重复watcher重复关联
+
+        if (!this.depsId.has(depId)) {
+          // 先让watcher记住其关联的dep
+          this.deps.push(dep); // 为了下次depsId可以进行去重判断
+
+          this.depsId.add(depId); // 最后才让dep记住其关联的watcher 这个this是watcher
+
+          dep.addSub(this);
+        }
+      }
+    }, {
+      key: "get",
+      value: function get() {
+        // 给Dep类的静态属性target赋值
+        // Dep.target = this;
+        pushTarget(this);
+        /**
+         * 1.执行getter就等于执行组件new Watcher的时候传递进来的渲染逻辑函数中的_render
+         * 2.就等于执行$options.render.call(vm)
+         * 3.就等于去vm上获取模板中变量vm.name和vm.age的值
+         * 4.就会触发绑定在模板上属性defineProperty的get方法
+         */
+
+        var value = this.getter.call(this.vm); // 渲染完成之后将Dep.target设置为null
+
+        popTarget(); // Dep.target = null;
+
+        return value;
+      }
+      /**
+       * watcher组件更新视图 
+       * 如果同一个组件A模板中绑定的name和age属性值都发生了set操作
+       * 那么原本直接执行watcher的get方法会触发两次视图渲染
+       * 这里设计一个队列将watcher都缓存起来 只更新一次 避免性能浪费
+       */
+
+    }, {
+      key: "update",
+      value: function update() {
+        // 如果是计算属性有lazy标识 计算属性依赖的值变化就标识dirty属性为脏
+        if (this.lazy) {
+          this.dirty = true;
+        } else {
+          // 先不直接更新watcher的视图 而是将要更新视图的watcher暂存到队列中
+          queneWatcher(this);
+        }
+      }
+    }, {
+      key: "run",
+      value: function run() {
+        // 真正执行视图渲染的地方
+        this.get();
+      }
+    }]);
+
+    return Watcher;
+  }();
+  /**
+   * 
+   * 1. 同一组件
+   * 假设A组件绑定了name和age，此时给name和age赋值触发两次setter，原本要更新A组件两次，现在我们要让它只更新一次视图
+   * 
+   * 2. 多个组件
+   * age属性不只依赖A组件，还依赖于B组件，当age连着两次赋值之后，此时原本A组件和B组件都要更新2次，现在我们要让A和B组件都各更新一次即可
+   * 
+   * 3.queneWatcher的作用
+   * 不管watcher的update方法走了多少次，最后的更新操作只进行一次，那么就要设置一个锁，在第一次代码执行的时候关锁，不让后续的代码触发这个更新操作
+   */
+
+
+  var quene = []; // 缓存数组 存放的watcher在后续都会执行一次刷新操作
+
+  var memo = {}; // 去重
+
+  var pending = false; // 防抖
+
+  function queneWatcher(watcher) {
+    var watcherId = watcher.id; // watcher去重
+
+    if (!memo[watcherId]) {
+      quene.push(watcher);
+      memo[watcherId] = true;
+      console.log(quene);
+      /**
+       * 不管此方法执行多少次 最终的视图刷新操作只执行一次 
+       * 为什么要将刷新的操作写在异步代码中呢 
+       * 就是为了利用事件环的机制 
+       * 让此异步代码等到前面的所有同步代码执行完成之后再执行 
+       * 也就实现了多次属性值修改只执行一次更新的操作
+       */
+
+      if (!pending) {
+        // setTimeout(flushSchedulerQuene,0)
+        nextTick(flushSchedulerQuene);
+        pending = true;
+      }
+    }
+  }
+  /**
+   * 把缓存在队列中的watcher拿出来 
+   * 依次执行其更新视图操作
+   */
+
+
+  function flushSchedulerQuene() {
+    console.log('执行异步批量渲染'); // 浅克隆一份
+
+    var flushWatcherQuene = quene.slice(0); // 清空队列和memo对象以及pending默认值
+
+    quene = []; // 保证在刷新的过程中有新的watcher重新放入队列中
+
+    memo = {};
+    pending = false; // 从保存watcher的队列中依次取出更新视图
+
+    flushWatcherQuene.forEach(function (watcher) {
+      watcher.run();
+    });
+  }
+
+  function initComputed(vm) {
+    var computed = vm.$options.computed;
+    console.log('computed', computed); // a:{} / a:fn(){}
+    // 将watchers暴露在vm上 便于在其他方法中直接用vm实例获取
+
+    var watchers = vm._computedWatchers = {}; // 循环遍历定义每一个计算属性
+
+    for (var key in computed) {
+      var userDefine = computed[key];
+      /**
+       * 我们需要监控计算属性中get的变化
+       * 1.一般情况下如果直接new Watcher就会立即执行fn 
+       * 2.这里加一个标识lazy标识在new Watcher的时候不要立即执行userDefine
+       * 3.将计算属性key和Watcher一一对应起来
+       */
+
+      var fn = typeof userDefine === 'function' ? userDefine : userDefine.get;
+      watchers[key] = new Watcher(vm, fn, {
+        lazy: true
+      }); // 这一步的目的是实现计算属性的响应式拦截 实现直接修改计算属性值引起视图重新渲染
+
+      defineComputed(vm, key, userDefine);
+    }
+  }
+  /**
+   * @param {Object} vm 
+   * @param {Object} key 计算属性的key
+   * @param {Object} userDefine 计算属性key对应的值，可能是一个函数或者一个对象
+   * 
+   * defineComputed的作用：给vm实例上定义响应式属性
+   */
+
+  function defineComputed(vm, key, userDefine) {
+    // 根据用户传入的computed计算属性是函数或者对象取出getter或setter
+    var getter = typeof userDefine === 'function' ? userDefine : userDefine.get;
+
+    var setter = userDefine.set || function () {};
+
+    console.log('获取计算属性的getter和setter', getter, setter); // 将用户传入的计算属性依次用Object.defineProperty进行get和set的重新绑定，好处在于这样一做之后在实例vm上可以直接获取到computed中的计算属性
+
+    Object.defineProperty(vm, key, {
+      get: createComputedGetter(key),
+      set: setter
+    });
+  } // 计算属性本身和data中的属性不一样，它本身不会收集依赖，只会让自己依赖的属性去收集依赖
+
+
+  function createComputedGetter(key) {
+    return function () {
+      // this就是vm 获取到对应计算属性key的watcher实例
+      var computedWatcher = this._computedWatchers[key];
+      /**
+       * 如果dirty为true 代表值是脏的发生了变化 就需要执行用户传入的函数
+       * 并且只有第一次进行取值的时候computedWatcher.dirty为true可以执行fn
+       * 执行过一次之后computedWatcher.dirty的值为false 后续每次执行都不会触发fn
+       * 
+       */
+
+      if (computedWatcher.dirty) {
+        // 求完值以后计算属性watcher就会出栈
+        computedWatcher.evaluate();
+      } // 说明计算属性watcher出栈后还有渲染watcher
+
+
+      if (Dep.target) {
+        // 让计算属性watcher里面依赖的属性 也去收集上层watcher 实现计算属性依赖的属性变化了 不仅计算属性的值变化 渲染watcher也发生变化
+        computedWatcher.depend();
+      }
+
+      return computedWatcher.value;
+    };
+  }
+
   function initState(vm) {
     var options = vm.$options; // 获取用户传入的选项
 
@@ -481,7 +820,7 @@
 
 
     function start(tagName, attrs) {
-      console.log(tagName, attrs, '开始标签');
+      // console.log(tagName, attrs, '开始标签');
       var astNode = createASTElement(tagName, attrs); // 如果root为空 就是AST树的根节点
 
       if (!root) {
@@ -503,7 +842,7 @@
 
 
     function end(tagName) {
-      console.log(tagName, '结束标签');
+      // console.log(tagName, '结束标签');
       var astNode = stack.pop(); // 栈顶弹出最后一个 校验标签是否合法
 
       if (astNode.tag !== tagName) {
@@ -519,7 +858,7 @@
 
 
     function chars(text) {
-      console.log(text, '文本内容');
+      // console.log(text, '文本内容');
       text = text.replace(/\s/g, ''); // 将多个空格替换为1个
       // 文本直接放到当前指向的节点的children下
 
@@ -543,8 +882,7 @@
 
 
     function parseStartTag() {
-      var start = htmlStr.match(startTagOpen);
-      console.log('匹配开始标签正则的结果', start);
+      var start = htmlStr.match(startTagOpen); // console.log('匹配开始标签正则的结果', start);
 
       if (start) {
         var match = {
@@ -568,9 +906,9 @@
 
         if (endResult) {
           advance(endResult[0].length);
-        }
+        } // console.log('解析开始标签的结果', match, htmlStr);
 
-        console.log('解析开始标签的结果', match, htmlStr);
+
         return match;
       }
 
@@ -617,9 +955,9 @@
           advance(text.length);
         }
       }
-    }
+    } // console.log('root', root);
 
-    console.log('root', root);
+
     return root;
   }
 
@@ -685,8 +1023,8 @@
     	
      */
 
-    var render = new Function(code);
-    console.log('render函数', render);
+    var render = new Function(code); // console.log('render函数',render)
+
     /* 执行render函数 用call绑定this */
     // render() {
     // 	return _c('div', {
@@ -704,10 +1042,10 @@
 
   function codeGenerator(astNode) {
     // let attrsCode = generatorProps(astNode.attrs);
-    var childrenCode = generatorChildren(astNode.children);
-    console.log('childrenCode', childrenCode);
-    var code = "_c('".concat(astNode.tag, "',").concat(astNode.attrs.length ? generatorProps(astNode.attrs) : 'null').concat(astNode.children.length ? ",".concat(childrenCode) : '', ")");
-    console.log('code', code);
+    var childrenCode = generatorChildren(astNode.children); // console.log('childrenCode',childrenCode);
+
+    var code = "_c('".concat(astNode.tag, "',").concat(astNode.attrs.length ? generatorProps(astNode.attrs) : 'null').concat(astNode.children.length ? ",".concat(childrenCode) : '', ")"); // console.log('code', code);
+
     return code;
   }
 
@@ -766,9 +1104,9 @@
 
         if (lastIndex < text.length) {
           tokens.push(JSON.stringify(text.slice(lastIndex, text.length)));
-        }
+        } // console.log('tokens', tokens);
 
-        console.log('tokens', tokens);
+
         return "_v(".concat(tokens.join('+'), ")");
       }
     }
@@ -820,221 +1158,6 @@
     return "{".concat(propsStr.slice(0, -1), "}");
   }
 
-  var timerFunction; // nextTick处理异步刷新的优雅降级
-
-  function getTimerFn(fn) {
-    if (Promise) {
-      timerFunction = function timerFunction() {
-        Promise.resolve().then(flashCallBacks);
-      };
-    } else if (MutationObserver) {
-      // 这里传入的回调是异步回调 当DOM元素变化的时候触发flashCallBacks
-      var mutationOb = new MutationObserver(flashCallBacks);
-      var textNode = document.createTextNode(1);
-      mutationOb.observe(textNode, {
-        characterData: true
-      });
-
-      timerFunction = function timerFunction() {
-        textNode.textContent = 2;
-      };
-    } else if (setImmediate) {
-      timerFunction = function timerFunction() {
-        setImmediate(flashCallBacks);
-      };
-    } else {
-      timerFunction = function timerFunction() {
-        setTimeout(flashCallBacks);
-      };
-    }
-  }
-
-  getTimerFn();
-  /**
-   * @param {Object} callback 回调函数
-   * 异步批处理:多次操作执行一次
-   */
-
-  function flashCallBacks() {
-    var flushCallBacks = callBacks.slice(0); // 清空队列和memo对象以及pending默认值
-
-    callBacks = [];
-    waiting = false; // 从保存watcher的队列中依次取出更新视图
-
-    flushCallBacks.forEach(function (cb) {
-      cb();
-    });
-  }
-
-  var callBacks = [];
-  var waiting = false;
-  function nextTick(callback) {
-    // 维护所有来自内部和外部的callback 这是同步操作
-    callBacks.push(callback);
-
-    if (!waiting) {
-      // 这是异步操作 最后将所有任务一起刷新
-      // setTimeout(()=>{
-      // 	flashCallBacks();
-      // },0)
-      timerFunction(flashCallBacks);
-      waiting = true;
-    }
-  }
-
-  var id = 0;
-
-  var Watcher = /*#__PURE__*/function () {
-    /**
-     * @param {Object} vm 实例
-     * @param {Object} fn 实例对应的渲染逻辑
-     * @param {Object} flag 标识是否为渲染watcher
-     */
-    function Watcher(vm, fn, flag) {
-      _classCallCheck(this, Watcher);
-
-      this.id = id++; // 创建组件唯一的watcher
-
-      this.getter = fn; // getter意味着调用函数可以发生取值操作
-
-      this.renderWatcher = flag; // 标识是否为渲染watcher
-
-      /**
-       * 记录当前这个组件watcher实例上观察了多少个属性，目的：
-       * 1.实现computed计算属性
-       * 2.组件卸载之后需要将当前组件watcher绑定的所有dep释放
-       * 3.watcher和dep是多对多的关系
-       */
-
-      this.deps = []; // 记录当前watcher绑定的dep的id数组 实现去重操作
-
-      this.depsId = new Set(); // 每次new Watcher 会执行并渲染视图
-
-      this.get();
-    }
-    /**
-     * @param {Object} dep 属性的收集器
-     * 给watcher记录关联了多少个属性dep
-     * 
-     * 注意：重复的属性也不用重复push记录，因为一个watcher组件模板中可能绑定了多个重复的属性，比如一个组件模板多个地方用到属性name这是很常见的
-     */
-
-
-    _createClass(Watcher, [{
-      key: "addDep",
-      value: function addDep(dep) {
-        var depId = dep.id; // 使用set实现watcher关联的属性dep 去重 避免同一属性重复watcher重复关联
-
-        if (!this.depsId.has(depId)) {
-          // 先让watcher记住其关联的dep
-          this.deps.push(dep); // 为了下次depsId可以进行去重判断
-
-          this.depsId.add(depId); // 最后才让dep记住其关联的watcher 这个this是watcher
-
-          dep.addSub(this);
-        }
-      }
-    }, {
-      key: "get",
-      value: function get() {
-        // 给Dep类的静态属性target赋值
-        Dep.target = this;
-        /**
-         * 1.执行getter就等于执行组件new Watcher的时候传递进来的渲染逻辑函数中的_render
-         * 2.就等于执行$options.render.call(vm)
-         * 3.就等于去vm上获取模板中变量vm.name和vm.age的值
-         * 4.就会触发绑定在模板上属性defineProperty的get方法
-         */
-
-        this.getter(); // 渲染完成之后将Dep.target设置为null
-
-        Dep.target = null;
-      }
-      /**
-       * watcher组件更新视图 
-       * 如果同一个组件A模板中绑定的name和age属性值都发生了set操作
-       * 那么原本直接执行watcher的get方法会触发两次视图渲染
-       * 这里设计一个队列将watcher都缓存起来 只更新一次 避免性能浪费
-       */
-
-    }, {
-      key: "update",
-      value: function update() {
-        // 先不直接更新watcher的视图 而是将要更新视图的watcher暂存到队列中
-        queneWatcher(this);
-      }
-    }, {
-      key: "run",
-      value: function run() {
-        // 真正执行视图渲染的地方
-        this.get();
-      }
-    }]);
-
-    return Watcher;
-  }();
-  /**
-   * 
-   * 1. 同一组件
-   * 假设A组件绑定了name和age，此时给name和age赋值触发两次setter，原本要更新A组件两次，现在我们要让它只更新一次视图
-   * 
-   * 2. 多个组件
-   * age属性不只依赖A组件，还依赖于B组件，当age连着两次赋值之后，此时原本A组件和B组件都要更新2次，现在我们要让A和B组件都各更新一次即可
-   * 
-   * 3.queneWatcher的作用
-   * 不管watcher的update方法走了多少次，最后的更新操作只进行一次，那么就要设置一个锁，在第一次代码执行的时候关锁，不让后续的代码触发这个更新操作
-   */
-
-
-  var quene = []; // 缓存数组 存放的watcher在后续都会执行一次刷新操作
-
-  var memo = {}; // 去重
-
-  var pending = false; // 防抖
-
-  function queneWatcher(watcher) {
-    var watcherId = watcher.id; // watcher去重
-
-    if (!memo[watcherId]) {
-      quene.push(watcher);
-      memo[watcherId] = true;
-      console.log(quene);
-      /**
-       * 不管此方法执行多少次 最终的视图刷新操作只执行一次 
-       * 为什么要将刷新的操作写在异步代码中呢 
-       * 就是为了利用事件环的机制 
-       * 让此异步代码等到前面的所有同步代码执行完成之后再执行 
-       * 也就实现了多次属性值修改只执行一次更新的操作
-       */
-
-      if (!pending) {
-        // setTimeout(flushSchedulerQuene,0)
-        nextTick(flushSchedulerQuene);
-        pending = true;
-      }
-    }
-  }
-  /**
-   * 把缓存在队列中的watcher拿出来 
-   * 依次执行其更新视图操作
-   */
-
-
-  function flushSchedulerQuene() {
-    console.log('执行异步批量渲染'); // 浅克隆一份
-
-    var flushWatcherQuene = quene.slice(0); // 清空队列和memo对象以及pending默认值
-
-    quene = []; // 保证在刷新的过程中有新的watcher重新放入队列中
-
-    memo = {};
-    pending = false; // 从保存watcher的队列中依次取出更新视图
-
-    flushWatcherQuene.forEach(function (watcher) {
-      watcher.run();
-    });
-  }
-
   /**
    * 组件挂载流程
    * @param {Object} vm 挂载组件所需的Vue实例对象
@@ -1055,8 +1178,77 @@
     }; // 创建watcher new的过程就是渲染视图的过程
 
 
-    var watcher = new Watcher(vm, updateComponent, true);
+    var watcher = new Watcher(vm, updateComponent, {
+      renderWatcher: true
+    });
     console.log('watcher', watcher);
+  }
+
+  // 策略对象 
+  var strats = {}; // 一个个具体的策略
+
+  var LIFECYCLE = ["beforeCreate", "created", "beforeMount", "mounted", "beforeUpdate", "updated", "beforeDestroy", "destroyed"]; // 创建一个个的策略 这意味着key为生命周期的值肯定是一个数组
+
+  function makeStrats(stratsList) {
+    stratsList.forEach(function (hook) {
+      strats[hook] = function (oldValue, newValue) {
+        if (newValue) {
+          if (oldValue) {
+            return oldValue.concat(newValue); // 新旧都有 合并在一个数组中
+          } else {
+            return [newValue]; // 新传入的属性值存在 旧的不存在 就新的包装在数组中
+          }
+        } else {
+          return oldValue; // 只有旧对象没有新对象直接用旧对象的key的值
+        }
+      };
+    });
+  }
+
+  makeStrats(LIFECYCLE);
+
+  /**
+   * @param {Object} oldOptions 当前的Vue.options对象
+   * @param {Object} newOptions Vue.mixin调用时传入的新的options
+   * 此方法不同于普通的对象之前的合并，比如：
+   * let oldOptions = {};  let newOptions = {created:100};
+   * 1. 要求将合并的结果要保存在oldOptions对象中
+   * 2. 要求将key对应的值在合并之后放在数组队列中维护起来：
+   * 
+   * 比如上面例子合并之后的结果就是:oldOptions = {created:[100]}，再次进行合并：
+   * let oldOptions = {created:[100]};  let newOptions = {created:200};
+   * 合并结果为：oldOptions = {created:[100,200]}
+   * 
+   * 总的来说就是：新旧对象中相同key的要依次按照合并的顺序维护在一个数组队列中，并且将合并的结果赋值给原来的旧的对象本身，也就是Vue.options对象。
+   */
+
+  function mergeOptions(oldOptions, newOptions) {
+    var resOptions = {}; // 先循环老的对象
+
+    for (var key in oldOptions) {
+      mergeField(key); // 合并要合并的字段
+    } // 再循环传入的对象
+
+
+    for (var _key in newOptions) {
+      // 父对象合并过的字段就不重复合并了
+      if (!oldOptions.hasOwnProperty(_key)) {
+        mergeField(_key); // 合并要合并的字段
+      }
+    }
+
+    function mergeField(key) {
+      // 策略模式减少if - else 避免写很多if条件
+      if (strats[key]) {
+        // 有策略优先走策略 说明我定义好了如何处理的策略
+        resOptions[key] = strats[key](oldOptions[key], newOptions[key]);
+      } else {
+        // 如果没有策略那么以传入的新的渲染中key的值为主
+        resOptions[key] = newOptions[key] || oldOptions[key];
+      }
+    }
+
+    return resOptions;
   }
 
   function initMixin(Vue) {
@@ -1064,12 +1256,31 @@
     Vue.prototype._init = function (options) {
       // 给生成的实例上挂载$options用于在其他地方获取用户传入的配置
       var vm = this;
-      vm.$options = options; // 开始初始化options中的各个状态 data - props - methods...
+      /**
+       * options是用户传入的配置项
+       * this.constructor.options是全局Vue上的静态options对象
+       * 
+       * Vue.mixin的作用就是将全局的配置项合并成为一个对象，将相同key的值放入一个数组中
+       * Vue的实例在初始化的时候会再次将用户自己传入的配置项和之前全局的配置对象二次进行合并
+       * 这样做的好处是我们定义的全局的filter、指令、组件component等最终都会挂载到每一个Vue的实例上
+       * 供Vue的实例this进行调用 这就是为什么全局的过滤器、组件在任意地方都可以访问调用的原因
+       * 这也是为什么全局的生命周期函数总是在实例之前调用的原因
+       */
 
-      initState(vm); // 如果用户传入了el属性 就使用$mount进行挂载
+      vm.$options = mergeOptions(this.constructor.options, options); // data未初始化前调用beforeCreate生命周期函数
+
+      callHook(vm, 'beforeCreate'); // 开始初始化options中的各个状态 data - props - methods...
+
+      initState(vm); // data初始化完成之后调用created生命周期函数
+
+      callHook(vm, 'created'); // 如果用户传入了el属性 就使用$mount进行挂载
 
       if (options.el) {
-        vm.$mount(options.el);
+        // 未挂载到DOM上前调用beforeMount生命周期函数
+        callHook(vm, 'beforeMount');
+        vm.$mount(options.el); // DOM挂载完成调用mounted生命周期函数
+
+        callHook(vm, 'mounted');
       }
     };
 
@@ -1100,6 +1311,23 @@
 
       mountComponent(vm, element);
     };
+  }
+  /**
+   * @param {Object} vm Vue实例
+   * @param {Object} hook 要执行的生命周期函数名称
+   * 发布订阅模式应用：在策略模式处一一进行订阅，在这里进行发布
+   */
+
+  function callHook(vm, hook) {
+    // 这里取到的和实例配置项合并之后的hook 应该是一个数组
+    var handlers = vm.$options[hook];
+
+    if (Array.isArray(handlers)) {
+      handlers.forEach(function (hook) {
+        // 所有生命周期函数的this都是实例本身
+        hook.call(vm);
+      });
+    }
   }
 
   /**
@@ -1281,18 +1509,40 @@
     };
   }
 
+  function initGlobalApi(Vue) {
+    // 原型挂载核心API
+    Vue.prototype.$nextTick = nextTick;
+    /* Vue类的静态全局配置对象 */
+
+    Vue.options = {};
+    /**
+     * 调用 一次mixin，就把选项中的created取出来挂到Vue.options的created数组
+     * 
+     * 将全局的Vue.options对象和用户传入的mixinOptions进行合并
+     * 合并完成之后将结果赋值给全局Vue.options对象对应的key的数组上
+     * @param {Object} mixinOptions
+     */
+
+    Vue.mixin = function (mixinOptions) {
+      // this === Vue	
+      this.options = mergeOptions(this.options, mixinOptions); // console.log(this.options);
+
+      return this; // 方便链式调用
+    };
+  }
+
   /* 打包入口文件 */
 
   function Vue(options) {
     this._init(options);
-  } // 原型挂载核心API 
+  } // 给Vue类拓展初始化options的方法
 
-
-  Vue.prototype.$nextTick = nextTick; // 给Vue类拓展初始化options的方法
 
   initMixin(Vue); // 模板编译 组件挂载
 
-  initLifeCycle(Vue);
+  initLifeCycle(Vue); // 初始化全局API
+
+  initGlobalApi(Vue);
 
   return Vue;
 

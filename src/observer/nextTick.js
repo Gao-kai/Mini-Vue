@@ -6,9 +6,8 @@ function getTimerFn(fn){
 			Promise.resolve().then(flashCallBacks);
 		}
 	}else if(MutationObserver){
-		// 这里传入的回调是异步回调 当DOM元素变化的时候触发flashCallBacks
+		// 这里传入的回调是异步回调 当DOM元素属性变化的时候触发flashCallBacks
 		let mutationOb = new MutationObserver(flashCallBacks);
-		
 		let textNode = document.createTextNode(1);
 		mutationOb.observe(textNode,{
 			characterData:true
@@ -22,7 +21,7 @@ function getTimerFn(fn){
 		}
 	}else{
 		timerFunction = ()=>{
-			setTimeout(flashCallBacks);
+			setTimeout(flashCallBacks,0);
 		}
 	}
 }
@@ -56,8 +55,6 @@ export function nextTick(callback){
 		// setTimeout(()=>{
 		// 	flashCallBacks();
 		// },0)
-		
-		
 		timerFunction(flashCallBacks);
 		waiting = true;
 	}

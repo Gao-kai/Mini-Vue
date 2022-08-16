@@ -1,4 +1,6 @@
 import {initData} from './initData.js'
+import {initComputed} from './initComputed.js'
+
 
 export function initState(vm) {
 	let options = vm.$options; // 获取用户传入的选项

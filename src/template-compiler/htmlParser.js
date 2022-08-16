@@ -43,7 +43,7 @@ export function parseHTML(htmlStr) {
 	 * 根据正则匹配到的开始标签的tagName和attrs构建AST节点
 	 */
 	function start(tagName, attrs) {
-		console.log(tagName, attrs, '开始标签');
+		// console.log(tagName, attrs, '开始标签');
 
 		let astNode = createASTElement(tagName, attrs);
 		// 如果root为空 就是AST树的根节点
@@ -65,7 +65,7 @@ export function parseHTML(htmlStr) {
 	 * 根据正则匹配到的结束标签的tagName构建AST节点
 	 */
 	function end(tagName) {
-		console.log(tagName, '结束标签');
+		// console.log(tagName, '结束标签');
 		let astNode = stack.pop(); // 栈顶弹出最后一个 校验标签是否合法
 		if (astNode.tag !== tagName) {
 			console.error('标签不合法')
@@ -78,7 +78,7 @@ export function parseHTML(htmlStr) {
 	 * 根据正则匹配到的文本text构建AST节点
 	 */
 	function chars(text) {
-		console.log(text, '文本内容');
+		// console.log(text, '文本内容');
 		text = text.replace(/\s/g, '') // 将多个空格替换为1个
 		// 文本直接放到当前指向的节点的children下
 		text && currentParent.children.push({
@@ -100,7 +100,7 @@ export function parseHTML(htmlStr) {
 	 */
 	function parseStartTag() {
 		const start = htmlStr.match(startTagOpen);
-		console.log('匹配开始标签正则的结果', start);
+		// console.log('匹配开始标签正则的结果', start);
 
 		if (start) {
 			const match = {
@@ -125,7 +125,7 @@ export function parseHTML(htmlStr) {
 				advance(endResult[0].length);
 			}
 
-			console.log('解析开始标签的结果', match, htmlStr);
+			// console.log('解析开始标签的结果', match, htmlStr);
 			return match;
 		}
 
@@ -174,6 +174,6 @@ export function parseHTML(htmlStr) {
 		}
 	}
 
-	console.log('root', root);
+	// console.log('root', root);
 	return root;
 }

@@ -75,7 +75,7 @@ export function compileToFunction(template) {
 	 */
 	
 	let render = new Function(code);
-	console.log('render函数',render)
+	// console.log('render函数',render)
 	
 	/* 执行render函数 用call绑定this */
 
@@ -97,11 +97,11 @@ export function compileToFunction(template) {
 function codeGenerator(astNode) {
 	// let attrsCode = generatorProps(astNode.attrs);
 	let childrenCode = generatorChildren(astNode.children);
-	console.log('childrenCode',childrenCode);
+	// console.log('childrenCode',childrenCode);
 	let code =
 		`_c('${astNode.tag}',${ astNode.attrs.length ? generatorProps(astNode.attrs):'null'}${ astNode.children.length ? `,${childrenCode}`:''})`;
 
-	console.log('code', code);
+	// console.log('code', code);
 	return code;
 }
 
@@ -154,7 +154,7 @@ function generatorChild(astNode) {
 			if (lastIndex < text.length) {
 				tokens.push(JSON.stringify(text.slice(lastIndex, text.length)));
 			}
-			console.log('tokens', tokens);
+			// console.log('tokens', tokens);
 			return `_v(${tokens.join('+')})`
 		}
 	}
