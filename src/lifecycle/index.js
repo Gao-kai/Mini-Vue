@@ -23,6 +23,6 @@ export function mountComponent(vm, el) {
 	
 	// 创建watcher new的过程就是渲染视图的过程
 	let watcher = new Watcher(vm,updateComponent,{renderWatcher:true});
-	console.log('watcher',watcher)
+	// console.log('watcher',watcher)
 	
 }

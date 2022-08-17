@@ -286,8 +286,8 @@
     Object.defineProperty(target, key, {
       // 拦截取值操作
       get: function get() {
-        console.log('取值操作', key, value); // 属性的收集器dep 进行依赖收集
-
+        // console.log('取值操作', key, value);
+        // 属性的收集器dep 进行依赖收集
         if (Dep.target) {
           dep.depend(Dep.target);
         }
@@ -296,7 +296,7 @@
       },
       // 拦截赋值操作
       set: function set(newValue) {
-        console.log('存值操作', key, value);
+        // console.log('存值操作', key, value);
         if (newValue === value) return; // 如果新赋的值是一个新的对象 还需要劫持
 
         observe(newValue);
@@ -316,12 +316,11 @@
       newArrayProto[method] = function () {
         var _oldArrayProto$method;
 
-        console.log('监听到调用了数组方法', method);
-
         for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
           args[_key] = arguments[_key];
         }
 
+        // console.log('监听到调用了数组方法', method);
         var result = (_oldArrayProto$method = oldArrayProto[method]).call.apply(_oldArrayProto$method, [this].concat(args)); // 需要对操作数组方法的时候新增的数据 再次进行劫持
 
 
@@ -336,9 +335,8 @@
           case 'splice':
             inserted = args.slice(2);
             break;
-        }
+        } // console.log('inserted', inserted);
 
-        console.log('inserted', inserted);
 
         if (inserted) {
           // 对新增的内容再次进行劫持
@@ -459,15 +457,25 @@
      * 当watcher实例是一个渲染watcher的时候，fn就是_render和_update意味着要更新视图
      * 当watcher实例是一个计算watcher的时候，fn就是计算属性自身的getter，要设置缓存memorize
      */
-    function Watcher(vm, fn, options) {
+    function Watcher(vm, exprOrFn, options, callback) {
       _classCallCheck(this, Watcher);
 
       this.id = id++; // 创建组件唯一的watcher
+      // getter意味着调用函数可以发生取值操作
 
-      this.getter = fn; // getter意味着调用函数可以发生取值操作
+      if (typeof exprOrFn === 'string') {
+        // 值为字符串 也转化为函数
+        this.getter = function () {
+          return vm[exprOrFn];
+        };
+      } else {
+        this.getter = exprOrFn;
+      }
 
+      this.user = options.user;
       this.renderWatcher = options.renderWatcher; // 标识是否为渲染watcher
 
+      this.callback = callback;
       this.vm = vm;
       /**
        * 记录当前这个组件watcher实例上观察了多少个属性，目的：
@@ -487,7 +495,7 @@
        */
 
       this.lazy = options.lazy;
-      this.lazy ? null : this.get();
+      this.value = this.lazy ? null : this.get();
       this.dirty = options.lazy;
     }
 
@@ -572,8 +580,13 @@
     }, {
       key: "run",
       value: function run() {
-        // 真正执行视图渲染的地方
-        this.get();
+        var oldValue = this.value; // 真正执行视图渲染的地方
+
+        var newValue = this.get(); // 表示当前watcher还是一个被watch监控的属性
+
+        if (this.user) {
+          this.callback.call(this.vm, newValue, oldValue);
+        }
       }
     }]);
 
@@ -604,7 +617,6 @@
     if (!memo[watcherId]) {
       quene.push(watcher);
       memo[watcherId] = true;
-      console.log(quene);
       /**
        * 不管此方法执行多少次 最终的视图刷新操作只执行一次 
        * 为什么要将刷新的操作写在异步代码中呢 
@@ -627,8 +639,8 @@
 
 
   function flushSchedulerQuene() {
-    console.log('执行异步批量渲染'); // 浅克隆一份
-
+    // console.log('执行异步批量渲染');
+    // 浅克隆一份
     var flushWatcherQuene = quene.slice(0); // 清空队列和memo对象以及pending默认值
 
     quene = []; // 保证在刷新的过程中有新的watcher重新放入队列中
@@ -642,8 +654,7 @@
   }
 
   function initComputed(vm) {
-    var computed = vm.$options.computed;
-    console.log('computed', computed); // a:{} / a:fn(){}
+    var computed = vm.$options.computed; // console.log('computed',computed); // a:{} / a:fn(){}
     // 将watchers暴露在vm上 便于在其他方法中直接用vm实例获取
 
     var watchers = vm._computedWatchers = {}; // 循环遍历定义每一个计算属性
@@ -675,11 +686,11 @@
 
   function defineComputed(vm, key, userDefine) {
     // 根据用户传入的computed计算属性是函数或者对象取出getter或setter
-    var getter = typeof userDefine === 'function' ? userDefine : userDefine.get;
+    typeof userDefine === 'function' ? userDefine : userDefine.get;
 
-    var setter = userDefine.set || function () {};
+    var setter = userDefine.set || function () {}; // console.log('获取计算属性的getter和setter',getter,setter);
+    // 将用户传入的计算属性依次用Object.defineProperty进行get和set的重新绑定，好处在于这样一做之后在实例vm上可以直接获取到computed中的计算属性
 
-    console.log('获取计算属性的getter和setter', getter, setter); // 将用户传入的计算属性依次用Object.defineProperty进行get和set的重新绑定，好处在于这样一做之后在实例vm上可以直接获取到computed中的计算属性
 
     Object.defineProperty(vm, key, {
       get: createComputedGetter(key),
@@ -714,6 +725,36 @@
     };
   }
 
+  function initWatch(vm) {
+    var watch = vm.$options.watch;
+
+    for (var key in watch) {
+      var handler = watch[key];
+      /**
+       * 1.值为字符串
+       * 2.值为函数
+       * 3.值为数组
+       */
+
+      if (Array.isArray(handler)) {
+        for (var i = 0; i < handler.length; i++) {
+          createWatcher(vm, key, handler[i]);
+        }
+      } else {
+        createWatcher(vm, key, handler);
+      }
+    }
+  }
+
+  function createWatcher(vm, key, handler) {
+    /* 如果某个watcher属性的值是字符串 那么这个字符串应该是methods中的一个函数名，同样的Vue内部会将用户传入的options.methods对象中的值依次挂载到vm上，所以这里通过vm[函数名]就可以取到这个watcher属性的回调函数*/
+    if (typeof handler === 'string') {
+      handler = vm[handler];
+    }
+
+    vm.$watch(key, handler);
+  }
+
   function initState(vm) {
     var options = vm.$options; // 获取用户传入的选项
 
@@ -725,9 +766,7 @@
       initData(vm);
     }
 
-    if (options.methods) {
-      initMethods(vm);
-    }
+    if (options.methods) ;
 
     if (options.computed) {
       initComputed(vm);
@@ -1178,10 +1217,9 @@
     }; // 创建watcher new的过程就是渲染视图的过程
 
 
-    var watcher = new Watcher(vm, updateComponent, {
+    new Watcher(vm, updateComponent, {
       renderWatcher: true
-    });
-    console.log('watcher', watcher);
+    }); // console.log('watcher',watcher)
   }
 
   // 策略对象 
@@ -1401,8 +1439,8 @@
     if (isRealDomElement) {
       // 开始初始化渲染
       // 1.基于VNode虚拟DOM创建真实DOM元素
-      var newElement = createElement(VNode);
-      console.log('newElement', newElement); // 2.新节点newElement替换老节点el 也是有讲究的
+      var newElement = createElement(VNode); // console.log('newElement',newElement)
+      // 2.新节点newElement替换老节点el 也是有讲究的
       // 假设要将A节点的内容替换为B节点的，需要先将B插入到A的下一个兄弟节点位置，然后移除A节点；而不能直接先将A移除，然后找到A的父元素appendChild，这样会插入到A的父元素的末尾去，导致前后节点位置发生变化
 
       var parentNode = oldVNode.parentNode;
@@ -1492,9 +1530,9 @@
     Vue.prototype._update = function (vNode) {
       var vm = this;
       var el = vm.$el; // 此el是querySelector获取到的dom元素对象，不是new Vue时传入的选择符字符串'#app'
+      // console.log('执行render函数返回的虚拟节点',vNode);
+      // console.log('要挂载的真实DOM节点',el);
 
-      console.log('执行render函数返回的虚拟节点', vNode);
-      console.log('要挂载的真实DOM节点', el);
       /**
        * Vue2.0和Vue3.0
        * patch既有初始化的功能，又有更新视图的功能
@@ -1542,7 +1580,15 @@
 
   initLifeCycle(Vue); // 初始化全局API
 
-  initGlobalApi(Vue);
+  initGlobalApi(Vue); // 实例API $watch
+
+  Vue.prototype.$watch = function (exprOrFn, callback) {
+    console.log('-----------exprOrFn', exprOrFn, 'callback', callback); // exprOrFn属性值变化时执行callback
+
+    new Watcher(this, exprOrFn, {
+      user: true
+    }, callback);
+  };
 
   return Vue;
 

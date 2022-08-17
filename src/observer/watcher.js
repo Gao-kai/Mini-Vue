@@ -11,10 +11,21 @@ class Watcher {
 	 * 当watcher实例是一个渲染watcher的时候，fn就是_render和_update意味着要更新视图
 	 * 当watcher实例是一个计算watcher的时候，fn就是计算属性自身的getter，要设置缓存memorize
 	 */
-	constructor(vm, fn, options) {
+	constructor(vm, exprOrFn, options,callback) {
 		this.id = id++; // 创建组件唯一的watcher
-		this.getter = fn; // getter意味着调用函数可以发生取值操作
+		
+		// getter意味着调用函数可以发生取值操作
+		if(typeof exprOrFn === 'string'){
+			// 值为字符串 也转化为函数
+			this.getter = function(){
+				return vm[exprOrFn];
+			}
+		}else{
+			this.getter = exprOrFn;
+		}
+		this.user= options.user;
 		this.renderWatcher = options.renderWatcher; // 标识是否为渲染watcher
+		this.callback = callback;
 		this.vm = vm;
 		/**
 		 * 记录当前这个组件watcher实例上观察了多少个属性，目的：
@@ -34,7 +45,7 @@ class Watcher {
 		 * 2. 多次取值用dirty进行控制
 		 */
 		this.lazy = options.lazy;
-		this.lazy ? null : this.get();
+		this.value = this.lazy ? null : this.get();
 		this.dirty = options.lazy;
 	}
 	
@@ -92,7 +103,6 @@ class Watcher {
 		 * 4.就会触发绑定在模板上属性defineProperty的get方法
 		 */
 		let value = this.getter.call(this.vm);
-		
 		// 渲染完成之后将Dep.target设置为null
 		popTarget();
 		// Dep.target = null;
@@ -120,8 +130,13 @@ class Watcher {
 	}
 	
 	run(){
+		let oldValue = this.value;
 		// 真正执行视图渲染的地方
-		this.get();
+		let newValue =  this.get();
+		// 表示当前watcher还是一个被watch监控的属性
+		if(this.user){
+			this.callback.call(this.vm,newValue,oldValue);
+		}
 	}
 }
 
@@ -149,7 +164,6 @@ function queneWatcher(watcher){
 	if(!memo[watcherId]){
 		quene.push(watcher);
 		memo[watcherId] = true;
-		console.log(quene);
 		
 		/**
 		 * 不管此方法执行多少次 最终的视图刷新操作只执行一次 
@@ -171,7 +185,7 @@ function queneWatcher(watcher){
  * 依次执行其更新视图操作
  */
 function flushSchedulerQuene(){
-	console.log('执行异步批量渲染');
+	// console.log('执行异步批量渲染');
 	// 浅克隆一份
 	let flushWatcherQuene = quene.slice(0);
 	

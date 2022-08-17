@@ -6,8 +6,8 @@
 		<meta http-equiv="X-UA-Compatible" content="IE=edge">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>手写实现Mini-Vue</title>
-		<!-- <script src="/dist/mini-vue/vue.js" type="text/javascript"></script> -->
-		<script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script>
+		<script src="/dist/mini-vue/vue.js" type="text/javascript"></script>
+		<!-- <script src="https://cdn.jsdelivr.net/npm/vue@2.7.8/dist/vue.js"></script> -->
 	</head>
 
 	<body>
@@ -19,22 +19,25 @@
 			<h2>{{fullName1}} {{fullName1}} {{fullName1}}</h2>
 		</div> -->
 		
-		<div id="app">
+		<!-- <div id="app">
 			<h2>{{fullName1}} {{fullName1}} {{fullName1}}</h2>
-		</div>
+		</div> -->
 		
+		<div id="app">
+			<h2>{{firstName}}</h2>
+		</div>
 
 
 		<script type="text/javascript">
 			Vue.mixin({
 				created(){
-					console.log('mixin1-created')
+					// console.log('mixin1-created')
 				}
 			})
 			
 			Vue.mixin({
 				created(){
-					console.log('mixin2-created')
+					// console.log('mixin2-created')
 				}
 			})
 			// console.log(Vue.options)
@@ -66,11 +69,11 @@
 					}
 				},
 				created(){
-					console.log('vm-created')
+					// console.log('vm-created')
 				},
 				computed:{
 					fullName1(){
-						console.log('读取一次computed-fullName1的值');
+						// console.log('读取一次computed-fullName1的值');
 						return this.firstName + this.lastName;
 					},
 					/* fullName2:{
@@ -81,12 +84,45 @@
 							console.log('newValue',newValue);
 						}
 					} */
+				},
+				methods:{
+					nameWatchFn(newValue,oldValue){
+						console.log('watch method',newValue,oldValue);
+					}
+				},
+				watch:{
+					// 写法一
+					// firstName(newValue,oldValue){
+					// 	console.log("newValue,oldValue",newValue,oldValue);
+					// },
+					// 写法二
+					// lastName:[
+					// 	function(newValue,oldValue){
+					// 		console.log('callback1',newValue,oldValue);
+					// 	},
+					// 	function(newValue,oldValue){
+					// 		console.log('callback2',newValue,oldValue);
+					// 	},
+					// 	// 'nameWatchFn'
+					// ],
+					// 写法三
+					// name:'nameWatchFn'
+					
 				}
 			})
 			console.log('vm', vm)
 			
+			
+			
+			// 写法4 第一个参数可以是函数 可以是字符串
+			vm.$watch(()=>vm.firstName,(newValue,oldValue)=>{
+				console.log("vm.$watch",newValue,oldValue);
+			})
+			// vm.$watch("firstName",(newValue,oldValue)=>{
+			// 	console.log("vm.$watch",newValue,oldValue);
+			// })
+			
 			setTimeout(()=>{
-				// debugger;
 				vm.firstName = 'Wang';
 			},1000)
 

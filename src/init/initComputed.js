@@ -4,7 +4,7 @@ import Dep from '../observer/dep.js'
 // 初始化用户传入的计算属性computed对象中的每一个属性
 export function initComputed(vm) {
 	let computed = vm.$options.computed;
-	console.log('computed',computed); // a:{} / a:fn(){}
+	// console.log('computed',computed); // a:{} / a:fn(){}
 	
 	// 将watchers暴露在vm上 便于在其他方法中直接用vm实例获取
 	let watchers = vm._computedWatchers = {};
@@ -39,7 +39,7 @@ function defineComputed(vm,key,userDefine){
 	const getter = typeof userDefine === 'function' ? userDefine : userDefine.get;
 	const setter = userDefine.set || (()=>{});
 	
-	console.log('获取计算属性的getter和setter',getter,setter);
+	// console.log('获取计算属性的getter和setter',getter,setter);
 	
 	// 将用户传入的计算属性依次用Object.defineProperty进行get和set的重新绑定，好处在于这样一做之后在实例vm上可以直接获取到computed中的计算属性
 	Object.defineProperty(vm,key,{

@@ -13,7 +13,7 @@ function patch(oldVNode,VNode){
 		
 		// 1.基于VNode虚拟DOM创建真实DOM元素
 		let newElement = createElement(VNode);
-		console.log('newElement',newElement)
+		// console.log('newElement',newElement)
 		
 		// 2.新节点newElement替换老节点el 也是有讲究的
 		// 假设要将A节点的内容替换为B节点的，需要先将B插入到A的下一个兄弟节点位置，然后移除A节点；而不能直接先将A移除，然后找到A的父元素appendChild，这样会插入到A的父元素的末尾去，导致前后节点位置发生变化
@@ -108,8 +108,8 @@ export function initLifeCycle(Vue){
 		const vm = this;
 		const el = vm.$el; // 此el是querySelector获取到的dom元素对象，不是new Vue时传入的选择符字符串'#app'
 		
-		console.log('执行render函数返回的虚拟节点',vNode);
-		console.log('要挂载的真实DOM节点',el);
+		// console.log('执行render函数返回的虚拟节点',vNode);
+		// console.log('要挂载的真实DOM节点',el);
 		
 		/**
 		 * Vue2.0和Vue3.0

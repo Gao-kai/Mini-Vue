@@ -1,6 +1,6 @@
 import {initData} from './initData.js'
 import {initComputed} from './initComputed.js'
-
+import {initWatch} from "./initWatch.js"
 
 export function initState(vm) {
 	let options = vm.$options; // 获取用户传入的选项
@@ -14,7 +14,7 @@ export function initState(vm) {
 	}
 
 	if (options.methods) {
-		initMethods(vm);
+		// initMethods(vm);
 	}
 
 	if (options.computed) {

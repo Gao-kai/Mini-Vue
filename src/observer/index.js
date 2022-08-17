@@ -59,7 +59,7 @@ function defineReactive(target, key, value) {
 	Object.defineProperty(target, key, {
 		// 拦截取值操作
 		get() {
-			console.log('取值操作', key, value);
+			// console.log('取值操作', key, value);
 			
 			// 属性的收集器dep 进行依赖收集
 			if(Dep.target){
@@ -70,7 +70,7 @@ function defineReactive(target, key, value) {
 		},
 		// 拦截赋值操作
 		set(newValue) {
-			console.log('存值操作', key, value);
+			// console.log('存值操作', key, value);
 			if (newValue === value) return;
 			// 如果新赋的值是一个新的对象 还需要劫持
 			observe(newValue);
@@ -100,7 +100,7 @@ function createNewArrayProto() {
 
 	methods.forEach(method => {
 		newArrayProto[method] = function(...args) {
-			console.log('监听到调用了数组方法', method);
+			// console.log('监听到调用了数组方法', method);
 			let result = oldArrayProto[method].call(this, ...args);
 
 			// 需要对操作数组方法的时候新增的数据 再次进行劫持
@@ -116,7 +116,7 @@ function createNewArrayProto() {
 				default:
 					break;
 			}
-			console.log('inserted', inserted);
+			// console.log('inserted', inserted);
 
 			if (inserted) {
 				// 对新增的内容再次进行劫持
